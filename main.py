@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 import os
 import csv
+
+from gitdb.util import write
+
 from covid import COVID19Dataset
 
 # For Progress Bar
@@ -32,27 +35,40 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import f_regression
 
+config = {
+    'seed': 5201314,  # Your seed number, you can pick your lucky number. :)
+    'select_all': False,  # Whether to use all features.
+    'select_k': 24,  # num of selected features.
+    'valid_ratio': 0.2,  # validation_size = train_size * valid_ratio
+    'n_epochs': 3000,  # Number of epochs.
+    'batch_size': 256,
+    'learning_rate': 1e-3,
+    'weight_decay': 1e-4,  # L2 regularization strength.
+    'grad_norm_max': 10.0,  # Gradient clipping.
+    'early_stop': 500,  # If model has not improved for this many consecutive epochs, stop training.
+    'save_path': './models/model.ckpt'  # Your model will be saved here.
+}
+
 features = pd.read_csv('./data/covid.train.csv')
 x_data, y_data = features.iloc[:, 0:117], features.iloc[:, 117]
 
 #try choose your k best features
-k = 24
-selector = SelectKBest(score_func=f_regression, k=k)
+selector = SelectKBest(score_func=f_regression, k=config['select_k'])
 result = selector.fit(x_data, y_data)
 
 #result.scores_ inclues scores for each features
 #np.argsort sort scores in ascending order by index, we reverse it to make it descending.
 idx = np.argsort(result.scores_)[::-1]
-print(f'Top {k} Best feature score ')
-print(result.scores_[idx[:k]])
+print(f"Top {config['select_k']} Best feature score ")
+print(result.scores_[idx[:config['select_k']]])
 
-print(f'\nTop {k} Best feature index ')
-print(idx[:k])
+print(f"\nTop {config['select_k']} Best feature index ")
+print(idx[:config['select_k']])
 
-print(f'\nTop {k} Best feature name')
-print(x_data.columns[idx[:k]])
+print(f"\nTop {config['select_k']} Best feature name ")
+print(x_data.columns[idx[:config['select_k']]])
 
-selected_idx = list(np.sort(idx[:k]))
+selected_idx = list(np.sort(idx[:config['select_k']]))
 print(selected_idx)
 print(x_data.columns[selected_idx])
 
@@ -156,17 +172,6 @@ else:
     print("GPU is not available. Using CPU.")
     device = 'cpu'
 
-config = {
-    'seed': 5201314,  # Your seed number, you can pick your lucky number. :)
-    'select_all': False,  # Whether to use all features.
-    'valid_ratio': 0.2,  # validation_size = train_size * valid_ratio
-    'n_epochs': 3000,  # Number of epochs.
-    'batch_size': 256,
-    'learning_rate': 1e-5,
-    'early_stop': 500,  # If model has not improved for this many consecutive epochs, stop training.
-    'save_path': './models/model.ckpt'  # Your model will be saved here.
-}
-
 # Set seed for reproducibility
 same_seed(config['seed'])
 
@@ -203,11 +208,13 @@ def trainer(train_loader, valid_loader, model, config, device):
     # Define your optimization algorithm.
     # TODO: Please check https://pytorch.org/docs/stable/optim.html to get more available algorithms.
     # TODO: L2 regularization (optimizer(weight decay...) or implement by your self).
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate']*100, weight_decay=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'], weight_decay=config['weight_decay'])
     # optimizer = torch.optim.SGD(model.parameters(), lr=config['learning_rate'], momentum=0.9, weight_decay=1e-5)
-
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
-                                                                     T_0=2, T_mult=2, eta_min=config['learning_rate'])
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
+                                                                     T_max=2000,
+                                                                     eta_min=config['learning_rate'] / 100)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
+    #                                                                  T_0=2, T_mult=2, eta_min=config['learning_rate']/100)
 
     writer = SummaryWriter()  # Writer of tensoboard.
 
@@ -229,6 +236,7 @@ def trainer(train_loader, valid_loader, model, config, device):
             pred = model(x)
             loss = criterion(pred, y)
             loss.backward()  # Compute gradient(backpropagation).
+            # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=config['grad_norm_max'])
             optimizer.step()  # Update parameters.
             step += 1
             loss_record.append(loss.detach().item())
@@ -236,6 +244,7 @@ def trainer(train_loader, valid_loader, model, config, device):
             # Display current epoch number and loss on tqdm progress bar.
             train_pbar.set_description(f'Epoch [{epoch + 1}/{n_epochs}]')
             train_pbar.set_postfix({'loss': loss.detach().item()})
+            # writer.add_scalar('grad_norm', grad_norm, step)
 
         scheduler.step()
 
@@ -268,6 +277,8 @@ def trainer(train_loader, valid_loader, model, config, device):
             print('\nModel is not improving, so we halt the training session.')
             return
 
+    print('{best_loss:.5f} \n')
+    writer.close()
 
 model = My_Model(input_dim=x_train.shape[1]).to(device)  # put your model and data on the same computation device.
 trainer(train_loader, valid_loader, model, config, device)

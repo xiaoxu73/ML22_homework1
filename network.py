@@ -8,19 +8,19 @@ class My_Model(nn.Module):
         self.layers = nn.Sequential(
             # nn.Linear(input_dim, 128),
             # nn.BatchNorm1d(128),
-            # nn.LeakyReLU(),
+            # nn.LeakyReLU(0.2),
             # nn.Linear(128, 1)
             nn.Linear(input_dim, 64),
-            nn.LeakyReLU(0.2),
             nn.BatchNorm1d(64),
+            nn.LeakyReLU(0.2),
             nn.Dropout(0.2),
 
-            nn.Linear(64, 16),
-            nn.LeakyReLU(0.2),
-            # nn.BatchNorm1d(10),
-            nn.Dropout(0.1),
+            # nn.Linear(64, 16),
+            # nn.BatchNorm1d(16),
+            # nn.LeakyReLU(0.2),
+            # nn.Dropout(0.1),
 
-            nn.Linear(16, 1)
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
