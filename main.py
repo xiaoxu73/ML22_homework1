@@ -227,16 +227,17 @@ def trainer(train_loader, valid_loader, model, config, device):
         model.train()  # Set your model to train mode.
         loss_record = []
 
+        lr = scheduler. get_last_lr()[0]
+
         # tqdm is a package to visualize your training progress.
         train_pbar = tqdm(train_loader, position=0, leave=True)
-
         for x, y in train_pbar:
             optimizer.zero_grad()  # Set gradient to zero.
             x, y = x.to(device), y.to(device)  # Move your data to device.
             pred = model(x)
             loss = criterion(pred, y)
             loss.backward()  # Compute gradient(backpropagation).
-            # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=config['grad_norm_max'])
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=config['grad_norm_max'])
             optimizer.step()  # Update parameters.
             step += 1
             loss_record.append(loss.detach().item())
@@ -244,9 +245,7 @@ def trainer(train_loader, valid_loader, model, config, device):
             # Display current epoch number and loss on tqdm progress bar.
             train_pbar.set_description(f'Epoch [{epoch + 1}/{n_epochs}]')
             train_pbar.set_postfix({'loss': loss.detach().item()})
-            # writer.add_scalar('grad_norm', grad_norm, step)
-
-        scheduler.step()
+            writer.add_scalar('grad_norm', grad_norm, step)
 
         mean_train_loss = sum(loss_record) / len(loss_record)
         writer.add_scalar('Loss/train', mean_train_loss, step)
@@ -264,6 +263,9 @@ def trainer(train_loader, valid_loader, model, config, device):
         mean_valid_loss = sum(loss_record) / len(loss_record)
         print(f'Epoch [{epoch + 1}/{n_epochs}]: Train loss: {mean_train_loss:.4f}, Valid loss: {mean_valid_loss:.4f}')
         writer.add_scalar('Loss/valid', mean_valid_loss, step)
+        writer.add_scalar('Learning Rate', lr, step)
+
+        scheduler.step()
 
         if mean_valid_loss < best_loss:
             best_loss = mean_valid_loss
@@ -274,11 +276,16 @@ def trainer(train_loader, valid_loader, model, config, device):
             early_stop_count += 1
 
         if early_stop_count >= config['early_stop']:
-            print('\nModel is not improving, so we halt the training session.')
+            writer.add_hparams(hparam_dict=config, metric_dict={'hparam/valid_loss': best_loss})
+            writer.flush()
+            writer.close()
+            print(f'\nModel is not improving, so we halt the training session with the best_loss: {best_loss:.5f}')
             return
-
-    print('{best_loss:.5f} \n')
-    writer.close()
+    else:
+        writer.add_hparams(hparam_dict=config, metric_dict={'hparam/valid_loss': best_loss})
+        writer.flush()
+        writer.close()
+        print('{best_loss:.5f} \n')
 
 model = My_Model(input_dim=x_train.shape[1]).to(device)  # put your model and data on the same computation device.
 trainer(train_loader, valid_loader, model, config, device)
