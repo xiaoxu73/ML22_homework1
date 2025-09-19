@@ -43,6 +43,7 @@ config = {
     'n_epochs': 3000,  # Number of epochs.
     'batch_size': 256,
     'learning_rate': 1e-3,
+    'T_max': 2000,  # Number of epochs to restart learning rate.
     'weight_decay': 1e-4,  # L2 regularization strength.
     'grad_norm_max': 10.0,  # Gradient clipping.
     'early_stop': 500,  # If model has not improved for this many consecutive epochs, stop training.
@@ -211,7 +212,7 @@ def trainer(train_loader, valid_loader, model, config, device):
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'], weight_decay=config['weight_decay'])
     # optimizer = torch.optim.SGD(model.parameters(), lr=config['learning_rate'], momentum=0.9, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
-                                                                     T_max=2000,
+                                                                     T_max=config['T_max'],
                                                                      eta_min=config['learning_rate'] / 100)
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer,
     #                                                                  T_0=2, T_mult=2, eta_min=config['learning_rate']/100)
